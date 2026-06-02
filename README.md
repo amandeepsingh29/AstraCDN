@@ -1,171 +1,235 @@
-# AstraCDN
+<div align="center">
+  <h1>🚀 AstraCDN</h1>
+  <p><b>A High-Performance, Self-Hosted Edge CDN & Web Application Firewall (WAF)</b></p>
+  <p>Serve images, videos, and large files globally with advanced caching, built-in security, and on-the-fly media transformations.</p>
+</div>
 
-AstraCDN is a self-hosted CDN project for serving images, videos, and files
-through an edge caching layer.
+<br/>
 
-- Built a self-hosted CDN to serve images, videos, and files through an edge cache.
-- Added a dashboard and control plane to manage routes, tenants, cache purge/prewarm, signed URLs, rate limits, and security rules.
-- Runs locally with Podman using MinIO/S3, Redis, NATS, and PostgreSQL, with support for multi-edge deployment later.
+AstraCDN is a modern, Go-based Content Delivery Network designed to be hosted on your own infrastructure—from a single local server to a globally distributed multi-edge Kubernetes cluster. It provides a full control plane, a beautiful dashboard, and a highly optimized edge caching layer.
 
-This repository is being built in small phases. The current target is a minimal local stack with:
+---
 
-- Go edge service
-- Go control service
-- Go inference service
-- Go dashboard service
-- PostgreSQL
-- Redis
-- NATS
-- Podman Compose local deployment
+## 📑 Table of Contents
 
-## Local Development
+- [✨ Core Features](#-core-features)
+- [🏗️ System Architecture](#️-system-architecture)
+- [🚀 Quick Start (Local Development)](#-quick-start-local-development)
+- [💻 Using the Dashboard & API](#-using-the-dashboard--api)
+- [🗄️ Storage Backends (Local vs S3)](#️-storage-backends-local-vs-s3)
+- [🌐 Cloud & Production Deployment](#-cloud--production-deployment)
+- [🛠️ Configuration & Service Ports](#️-configuration--service-ports)
+- [📚 Documentation Directory](#-documentation-directory)
 
-Prerequisites:
+---
 
-- Podman
-- `podman-compose`
-- Go, if running services directly outside containers
+## ✨ Core Features
 
-Start the local stack:
+AstraCDN isn't just a basic proxy. It's built with advanced edge delivery capabilities out of the box:
 
+### ⚡ Edge Caching & Delivery
+- **Intelligent Caching**: Request coalescing (collapsing concurrent requests), segmented caching for streaming large objects (videos/binaries), and stale-while-revalidate support.
+- **Media Optimization**: On-the-fly image transformations (resizing, format conversion, JPEG quality adjustment).
+- **Compression**: Native support for Brotli and Gzip to minimize payload sizes.
+- **Cache Management**: Instant cache purging, surrogate key invalidation, and proactive edge cache prewarming.
+
+### 🛡️ Security & WAF
+- **Web Application Firewall**: Block specific HTTP methods, path prefixes, headers, and IP ranges.
+- **Access Control**: Secure content with Edge Signed URLs and Signed Cookies.
+- **Rate Limiting**: Route-scoped rate limiting (RPS and Burst) to prevent abuse.
+- **CORS Management**: Fully configurable Cross-Origin Resource Sharing.
+
+### 🏢 Multi-Tenancy & Control
+- **Tenant Management**: Built-in Role-Based Access Control (RBAC).
+- **Billing Integration**: Webhook events for integrating with billing providers (e.g., Stripe).
+- **Audit Logging**: Comprehensive audit trails for control plane operations.
+
+---
+
+## 🏗️ System Architecture
+
+AstraCDN is built on a microservices architecture using **Go**, optimized for concurrency and high throughput.
+
+```mermaid
+graph TD
+    Client((Client Request)) --> Ingress[Ingress Caddy HTTPS/HTTP3]
+    Ingress --> Edge[Edge Service]
+    
+    subgraph CDN Edge
+        Edge
+        Redis[(Redis - Fast KV)]
+    end
+    
+    subgraph Control Plane
+        Control[Control Service]
+        Dashboard[Dashboard Web UI]
+        Inference[Inference Service]
+        DB[(PostgreSQL)]
+    end
+    
+    Edge -.-> |Cache Miss| Origin[Origin Service / S3]
+    Edge <--> |NATS Pub/Sub| Control
+    Control <--> DB
+    Dashboard <--> Control
+```
+
+### Services Overview
+- **Edge**: The high-performance caching proxy. Handles WAF, compression, signing, and asset delivery.
+- **Control**: The central API that manages routes, domains, rules, and tenants.
+- **Dashboard**: A React-based web interface to manage your CDN infrastructure visually.
+- **Inference**: An AI-integrated service (via OpenAI API) for advanced logic and semantic intelligence.
+- **Ingress**: Uses Caddy to terminate HTTPS and HTTP/3 traffic for the edge.
+- **Origin**: An example origin service that can serve files locally or proxy to an S3 bucket.
+
+---
+
+## 🚀 Quick Start (Local Development)
+
+Run AstraCDN entirely on your local machine using Podman.
+
+### Prerequisites
+- [Podman](https://podman.io/) and `podman-compose`
+- [Go](https://go.dev/) (optional, if compiling from source)
+- `make`
+
+### 1. Spin up the Local Stack
 ```sh
 make up
 ```
+*(This starts PostgreSQL, Redis, NATS, and all AstraCDN Go services).*
 
-Stop the local stack:
+### 2. Access the Dashboard
+Navigate to: **[http://localhost:3000](http://localhost:3000)**
 
+> **Authentication**: The dashboard is protected by an access token. By default, the local dev token is `astracdn-local-dev-key`.
+
+### 3. Verify Health
 ```sh
-make down
+curl http://localhost:8080/health  # Check Edge health
 ```
 
-Reset local persisted data:
-
+### 4. Stop and Clean Up
 ```sh
-make reset-data
+make down          # Stop containers
+make reset-data    # Wipe local databases and caches
+make clean-images  # Remove built local images
 ```
 
-Remove local project containers/orphans and built service images:
+---
 
-```sh
-make clean
-make clean-images
-```
+## 💻 Using the Dashboard & API
 
-Run the local smoke/integration test:
+The AstraCDN Dashboard provides a seamless way to manage your infrastructure:
 
-```sh
-make smoke
-```
+- **Domain Management**: Add custom CDN hostnames. You can copy the generated DNS TXT records for ownership verification.
+- **Route Rules**: Attach advanced behaviors to routes. Configure response header injection, set up WAF blocking paths, and define rate limits without writing code.
+- **Route Versioning**: Inspect the history of delivery and security rule changes for safe rollouts.
+- **Local Asset Testing**: Upload files directly through the dashboard to test the CDN. The dashboard returns a `/edge/assets/...` path which you can instantly view. 
+  - *Note: Re-uploading an asset automatically publishes an edge cache purge.*
 
-Run local hot-path benchmarks:
-
-```sh
-make bench
-```
-
-Health checks:
-
-```sh
-curl http://localhost:8080/health
-curl http://localhost:8081/health
-curl http://localhost:8082/health
-curl http://localhost:3000/health
-```
-
-Open the local dashboard:
-
-```sh
-open http://localhost:3000
-```
-
-The dashboard API proxy is protected by `DASHBOARD_ACCESS_TOKEN`. For local
-development it defaults to `ASTRACDN_API_KEY`, so the default unlock token is
-`astracdn-local-dev-key`.
-Use the Domains panel to create CDN hostnames, copy the required DNS TXT
-ownership value, and run verification through the dashboard control-plane
-proxy. Local smoke tests bypass external DNS, but normal environments must add
-the TXT record before a domain becomes active.
-Use the Create route panel to create basic routes or attach common advanced
-rules: response header injection, WAF path blocking, and route-scoped rate
-limits. Empty advanced fields are ignored.
-Use the Route rule versions panel to inspect recent delivery, WAF, and
-rate-limit rule changes for safer route rollout review.
-
-Serve your own local assets:
-
+### Manually Serving Local Assets
+You can also drop files directly into the local origin folder:
 ```sh
 mkdir -p data/origin/assets
-cp /path/to/photo.jpg data/origin/assets/photo.jpg
-curl -H 'Host: cdn.localhost' http://localhost:8080/edge/assets/photo.jpg
+cp /path/to/video.mp4 data/origin/assets/video.mp4
+
+# Fetch through the Edge
+curl -H 'Host: cdn.localhost' http://localhost:8080/edge/assets/video.mp4
 ```
 
-The example origin mounts `data/origin` read-only and serves it under
-`/assets/*`. The dashboard can also upload files into the same local asset
-directory from the "Upload photo or video" panel. Uploaded files are shown in
-the local asset inventory and returned as `/edge/assets/...` paths that can be
-tested immediately in the CDN tester. The inventory can also delete local
-assets and publish a cache purge for the deleted edge path. Re-uploading the
-same asset path also publishes a purge so edge caches refresh to the new file.
-Asset upload and inventory responses include a `public_url` built from
-`DASHBOARD_PUBLIC_CDN_BASE_URL`, which defaults locally to
-`http://cdn.localhost:8080`. Use the inventory Purge action to invalidate a
-single asset without deleting the origin file.
+---
 
-For production-style media delivery, the example origin and dashboard can use
-an S3-compatible object store instead of local disk by setting
-`ORIGIN_STORAGE_MODE=s3` and `DASHBOARD_STORAGE_MODE=s3` plus the matching
-S3 endpoint, bucket, prefix, and credentials. Range requests, object metadata
-headers, CDN surrogate keys, dashboard upload/list/delete, and dashboard purge
-actions continue to work through the edge. The dashboard exposes the current
-asset backend in the upload panel and through `GET /api/assets/storage`. Use
-the asset inventory filter to narrow large local directories or S3 prefixes by
-folder and result limit. Asset Test, Purge, and Delete actions use the
-inventory panel's selected CDN host, so custom domains are supported without
-editing code. Asset Prewarm uses the same selected host and asks the control
-plane to fill edge cache for the selected object. The inventory can also
-prewarm or purge all currently loaded rows after applying a folder and limit
-filter.
+## 🗄️ Storage Backends (Local vs S3)
 
-API contract:
+AstraCDN's origin and dashboard natively support **S3-compatible object storage** (AWS S3, MinIO, Cloudflare R2, etc.) for production media delivery.
 
-- `api/openapi.yaml`
+### Using Local Storage
+By default, the stack uses local disk storage (`data/origin`). 
 
-Curl examples:
+### Using an S3 Backend
+To switch to S3, set the following environment variables in your deployment:
+```env
+ORIGIN_STORAGE_MODE=s3
+DASHBOARD_STORAGE_MODE=s3
 
-- `docs/curl-examples.md`
+# S3 Configuration
+ORIGIN_S3_ENDPOINT=https://s3.your-region.amazonaws.com
+ORIGIN_S3_BUCKET=your-bucket-name
+ORIGIN_S3_ACCESS_KEY_ID=your_key
+ORIGIN_S3_SECRET_ACCESS_KEY=your_secret
+```
+*When using S3, range requests, metadata headers, surrogate keys, and dashboard purge/upload actions all work seamlessly through the edge.*
 
-Production readiness notes:
+To test with a local MinIO container, run:
+```sh
+make up-minio
+```
 
-- `docs/tenant-rbac-billing.md`
-- `docs/local-minio-multi-edge.md`
-- `docs/global-edge-network.md`
-- `docs/live-cloud-deployment.md`
-- `docs/production-deployment.md`
-- `deploy/opentofu/README.md`
+---
 
-Local HTTPS/dev certificate guide:
+## 🌐 Cloud & Production Deployment
 
-- `docs/local-https.md`
+AstraCDN is designed to scale. It provides native configurations for container orchestration and infrastructure-as-code.
 
-Kubernetes deployment skeleton:
+- **Kubernetes**: See the `deploy/k8s/` directory for Kustomize overlays, Cert-Manager configs, and horizontal scaling setups.
+- **OpenTofu / Terraform**: See `deploy/opentofu/` for provisioning the underlying cloud infrastructure (regional edges, databases).
 
-- `deploy/k8s/README.md`
-- `docs/image-build-publish.md`
-- `docs/deployment-checklist.md`
-- `docs/production-tls.md`
-- `docs/production-runbook.md`
-- `docs/slo.md`
-- `docs/backup-restore.md`
-- `docs/database-migrations.md`
-- `docs/advanced-cdn-backlog.md`
+### Deployment Workflows
+- **`make global-edge-plan`**: Run an OpenTofu plan for production infrastructure.
+- **`make cloud-deploy`**: Trigger the cloud deployment script.
+- **`make cloud-verify`**: Run smoke tests against the deployed cloud environment.
 
-## Service Ports
+---
 
-- Edge: `8080`
-- Edge ingress HTTPS/HTTP3: `8443` TCP and UDP
-- Control: `8081`
-- Inference: `8082`
-- Dashboard: `3000`
-- PostgreSQL: `5432`
-- Redis: `6379`
-- NATS: `4222`
+## 🛠️ Configuration & Service Ports
+
+Below is the network topology of the local development stack:
+
+| Service | Port | Protocol / Notes |
+|---------|------|----------------|
+| **Dashboard** | `3000` | HTTP Web UI |
+| **Edge** | `8080` | HTTP Caching Proxy |
+| **Edge Ingress** | `8443` | HTTPS / HTTP3 (TCP & UDP via Caddy) |
+| **Control API** | `8081` | HTTP API |
+| **Inference API**| `8082` | HTTP API |
+| **Origin** | `9000` | HTTP Static File Server |
+| **PostgreSQL** | `5432` | Relational DB |
+| **Redis** | `6379` | Key-Value / Cache |
+| **NATS** | `4222` | Message Broker |
+| **MinIO** | `9002` | Optional S3 Backend (if `make up-minio`) |
+
+---
+
+## 📚 Documentation Directory
+
+Dive deeper into AstraCDN's capabilities by reviewing the official documentation:
+
+**Usage & APIs**
+- 📜 [OpenAPI Contract](api/openapi.yaml)
+- 💻 [cURL Examples](docs/curl-examples.md)
+
+**Architecture & Concepts**
+- 🏢 [Tenant RBAC & Billing](docs/tenant-rbac-billing.md)
+- 🌍 [Global Edge Network](docs/global-edge-network.md)
+- 💿 [Local MinIO & Multi-Edge](docs/local-minio-multi-edge.md)
+- 🔮 [Advanced CDN Backlog](docs/advanced-cdn-backlog.md)
+
+**Production & SRE**
+- 🚀 [Production Deployment](docs/production-deployment.md)
+- ☁️ [Live Cloud Deployment](docs/live-cloud-deployment.md)
+- 📖 [Production Runbook](docs/production-runbook.md)
+- 🔐 [Production TLS](docs/production-tls.md)
+- 📊 [SLO & Metrics](docs/slo.md)
+- 💾 [Backup & Restore](docs/backup-restore.md)
+
+**Development & CI/CD**
+- 🏗️ [Kubernetes Skeleton](deploy/k8s/README.md)
+- 🏗️ [OpenTofu Infrastructure](deploy/opentofu/README.md)
+- 📦 [Database Migrations](docs/database-migrations.md)
+- 🐳 [Image Build & Publish](docs/image-build-publish.md)
+- 🔒 [Local HTTPS Guide](docs/local-https.md)
+
+---
+<div align="center">
+  <i>Built with ❤️ for speed, security, and global delivery.</i>
+</div>
