@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/your-org/astra-cdn-edge
+    newTag: production-placeholder
+  - name: ghcr.io/your-org/astra-cdn-control
+    newTag: production-placeholder
+  - name: ghcr.io/your-org/astra-cdn-inference
+    newTag: production-placeholder
+  - name: ghcr.io/your-org/astra-cdn-origin
+    newTag: production-placeholder
+  - name: ghcr.io/your-org/astra-cdn-dashboard
+    newTag: production-placeholder
+
+replicas:
+  - name: edge
+    count: 4
+  - name: control
+    count: 2
+  - name: inference
+    count: 2
+  - name: example-origin
+    count: 1
+  - name: dashboard
+    count: 2
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: astra-cdn-config
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: astra-cdn-config
+      data:
+        ASTRACDN_ENV: production
+        EDGE_DOMAIN_VALIDATION_ENABLED: "true"
+        CONTROL_DOMAIN_VERIFICATION_BYPASS: "false"

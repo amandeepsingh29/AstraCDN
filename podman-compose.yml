@@ -1,0 +1,384 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-astracdn}
+      POSTGRES_USER: ${POSTGRES_USER:-astracdn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astracdn_local_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astracdn -d astracdn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: docker.io/library/nats:2-alpine
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  minio:
+    profiles: ["object-storage"]
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-astracdn}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-astracdn-local-minio-secret}
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    profiles: ["object-storage"]
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      - minio
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        sleep 5
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing local/"$${MINIO_BUCKET}"
+        mc ilm rule add --expire-days "$${MINIO_EXPIRE_DAYS}" local/"$${MINIO_BUCKET}" || true
+        mc anonymous set none local/"$${MINIO_BUCKET}" || true
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-astracdn}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-astracdn-local-minio-secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-astra-cdn-assets}
+      MINIO_EXPIRE_DAYS: ${MINIO_EXPIRE_DAYS:-30}
+
+  example-origin:
+    build:
+      context: .
+      dockerfile: services/origin/Containerfile
+    environment:
+      ORIGIN_PORT: 9000
+      ORIGIN_STORAGE_MODE: ${ORIGIN_STORAGE_MODE:-local}
+      ORIGIN_ASSET_DIR: /var/lib/astra-cdn/origin
+      ORIGIN_S3_ENDPOINT: ${ORIGIN_S3_ENDPOINT:-}
+      ORIGIN_S3_BUCKET: ${ORIGIN_S3_BUCKET:-}
+      ORIGIN_S3_REGION: ${ORIGIN_S3_REGION:-us-east-1}
+      ORIGIN_S3_ACCESS_KEY_ID: ${ORIGIN_S3_ACCESS_KEY_ID:-}
+      ORIGIN_S3_SECRET_ACCESS_KEY: ${ORIGIN_S3_SECRET_ACCESS_KEY:-}
+      ORIGIN_S3_SESSION_TOKEN: ${ORIGIN_S3_SESSION_TOKEN:-}
+      ORIGIN_S3_PREFIX: ${ORIGIN_S3_PREFIX:-}
+      ORIGIN_S3_FORCE_PATH_STYLE: ${ORIGIN_S3_FORCE_PATH_STYLE:-true}
+      ORIGIN_S3_TIMEOUT: ${ORIGIN_S3_TIMEOUT:-30s}
+      ORIGIN_CACHE_MAX_AGE: ${ORIGIN_CACHE_MAX_AGE:-60}
+      ORIGIN_LAST_MODIFIED: ${ORIGIN_LAST_MODIFIED:-Sun, 24 May 2026 09:00:00 GMT}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./data/origin:/var/lib/astra-cdn/origin:ro
+
+  edge:
+    build:
+      context: .
+      dockerfile: services/edge/Containerfile
+    environment:
+      ASTRACDN_ENV: ${ASTRACDN_ENV:-local}
+      EDGE_PORT: 8080
+      EDGE_NODE_ID: ${EDGE_NODE_ID:-edge-local-1}
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+      CONTROL_BASE_URL: ${CONTROL_BASE_URL:-http://control:8081}
+      CONTROL_API_KEY: ${ASTRACDN_API_KEY:-astracdn-local-dev-key}
+      EDGE_CONFIG_REFRESH_INTERVAL: ${EDGE_CONFIG_REFRESH_INTERVAL:-15s}
+      EDGE_DOMAIN_VALIDATION_ENABLED: ${EDGE_DOMAIN_VALIDATION_ENABLED:-false}
+      EDGE_ANALYTICS_PUSH_INTERVAL: ${EDGE_ANALYTICS_PUSH_INTERVAL:-0s}
+      EDGE_PUBLIC_URL: ${EDGE_PUBLIC_URL:-http://edge:8080}
+      EDGE_HEALTH_PUSH_INTERVAL: ${EDGE_HEALTH_PUSH_INTERVAL:-60s}
+      EDGE_REQUEST_COALESCING_ENABLED: ${EDGE_REQUEST_COALESCING_ENABLED:-true}
+      EDGE_WAF_ENABLED: ${EDGE_WAF_ENABLED:-false}
+      EDGE_WAF_BLOCK_METHODS: ${EDGE_WAF_BLOCK_METHODS:-}
+      EDGE_WAF_BLOCK_PATH_PREFIXES: ${EDGE_WAF_BLOCK_PATH_PREFIXES:-}
+      EDGE_WAF_BLOCK_HEADERS: ${EDGE_WAF_BLOCK_HEADERS:-}
+      EDGE_WAF_BLOCK_IPS: ${EDGE_WAF_BLOCK_IPS:-}
+      EDGE_RESPONSE_SET_HEADERS: ${EDGE_RESPONSE_SET_HEADERS:-}
+      EDGE_RESPONSE_REMOVE_HEADERS: ${EDGE_RESPONSE_REMOVE_HEADERS:-}
+      EDGE_REDIRECT_RULES: ${EDGE_REDIRECT_RULES:-}
+      EDGE_RATE_LIMIT_RULES: ${EDGE_RATE_LIMIT_RULES:-}
+      EDGE_INVALIDATION_ACK_ATTEMPTS: ${EDGE_INVALIDATION_ACK_ATTEMPTS:-3}
+      EDGE_INVALIDATION_ACK_BACKOFF: ${EDGE_INVALIDATION_ACK_BACKOFF:-250ms}
+      ORIGIN_BASE_URL: http://example-origin:9000
+      EDGE_ORIGIN_SHIELD_URLS: ${EDGE_ORIGIN_SHIELD_URLS:-}
+      EDGE_SIGNING_ENABLED: ${EDGE_SIGNING_ENABLED:-false}
+      EDGE_SIGNING_SECRET: ${EDGE_SIGNING_SECRET:-}
+      EDGE_SIGNED_COOKIE_ENABLED: ${EDGE_SIGNED_COOKIE_ENABLED:-false}
+      EDGE_SIGNED_COOKIE_NAME: ${EDGE_SIGNED_COOKIE_NAME:-AstraCDN-Signature}
+      EDGE_SIGNED_COOKIE_PATH_PREFIXES: ${EDGE_SIGNED_COOKIE_PATH_PREFIXES:-}
+      EDGE_REVALIDATION_MAX_STALE: ${EDGE_REVALIDATION_MAX_STALE:-24h}
+      EDGE_COMPRESSION_ENABLED: ${EDGE_COMPRESSION_ENABLED:-true}
+      EDGE_BROTLI_ENABLED: ${EDGE_BROTLI_ENABLED:-true}
+      EDGE_COMPRESSION_MIN_BYTES: ${EDGE_COMPRESSION_MIN_BYTES:-512}
+      EDGE_LARGE_OBJECT_STREAMING_ENABLED: ${EDGE_LARGE_OBJECT_STREAMING_ENABLED:-true}
+      EDGE_LARGE_OBJECT_THRESHOLD_BYTES: ${EDGE_LARGE_OBJECT_THRESHOLD_BYTES:-8388608}
+      EDGE_SEGMENTED_CACHE_ENABLED: ${EDGE_SEGMENTED_CACHE_ENABLED:-true}
+      EDGE_SEGMENT_SIZE_BYTES: ${EDGE_SEGMENT_SIZE_BYTES:-1048576}
+      EDGE_IMAGE_TRANSFORM_ENABLED: ${EDGE_IMAGE_TRANSFORM_ENABLED:-true}
+      EDGE_IMAGE_TRANSFORM_MAX_DIMENSION: ${EDGE_IMAGE_TRANSFORM_MAX_DIMENSION:-2048}
+      EDGE_IMAGE_TRANSFORM_JPEG_QUALITY: ${EDGE_IMAGE_TRANSFORM_JPEG_QUALITY:-82}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+      CORS_ENABLED: ${CORS_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_ALLOWED_METHODS: ${CORS_ALLOWED_METHODS:-GET,POST,OPTIONS}
+      CORS_ALLOWED_HEADERS: ${CORS_ALLOWED_HEADERS:-Authorization,Content-Type,X-AstraCDN-API-Key,X-Request-ID}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      CORS_MAX_AGE: ${CORS_MAX_AGE:-600}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - nats
+      - example-origin
+
+  edge-local-2:
+    profiles: ["multi-edge"]
+    build:
+      context: .
+      dockerfile: services/edge/Containerfile
+    environment:
+      ASTRACDN_ENV: ${ASTRACDN_ENV:-local}
+      EDGE_PORT: 8080
+      EDGE_NODE_ID: edge-local-2
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+      CONTROL_BASE_URL: ${CONTROL_BASE_URL:-http://control:8081}
+      CONTROL_API_KEY: ${ASTRACDN_API_KEY:-astracdn-local-dev-key}
+      EDGE_CONFIG_REFRESH_INTERVAL: ${EDGE_CONFIG_REFRESH_INTERVAL:-15s}
+      EDGE_DOMAIN_VALIDATION_ENABLED: ${EDGE_DOMAIN_VALIDATION_ENABLED:-false}
+      EDGE_ANALYTICS_PUSH_INTERVAL: ${EDGE_ANALYTICS_PUSH_INTERVAL:-0s}
+      EDGE_PUBLIC_URL: http://edge-local-2:8080
+      EDGE_HEALTH_PUSH_INTERVAL: ${EDGE_HEALTH_PUSH_INTERVAL:-60s}
+      EDGE_REQUEST_COALESCING_ENABLED: ${EDGE_REQUEST_COALESCING_ENABLED:-true}
+      EDGE_WAF_ENABLED: ${EDGE_WAF_ENABLED:-false}
+      EDGE_WAF_BLOCK_METHODS: ${EDGE_WAF_BLOCK_METHODS:-}
+      EDGE_WAF_BLOCK_PATH_PREFIXES: ${EDGE_WAF_BLOCK_PATH_PREFIXES:-}
+      EDGE_WAF_BLOCK_HEADERS: ${EDGE_WAF_BLOCK_HEADERS:-}
+      EDGE_WAF_BLOCK_IPS: ${EDGE_WAF_BLOCK_IPS:-}
+      EDGE_RESPONSE_SET_HEADERS: ${EDGE_RESPONSE_SET_HEADERS:-}
+      EDGE_RESPONSE_REMOVE_HEADERS: ${EDGE_RESPONSE_REMOVE_HEADERS:-}
+      EDGE_REDIRECT_RULES: ${EDGE_REDIRECT_RULES:-}
+      EDGE_RATE_LIMIT_RULES: ${EDGE_RATE_LIMIT_RULES:-}
+      EDGE_INVALIDATION_ACK_ATTEMPTS: ${EDGE_INVALIDATION_ACK_ATTEMPTS:-3}
+      EDGE_INVALIDATION_ACK_BACKOFF: ${EDGE_INVALIDATION_ACK_BACKOFF:-250ms}
+      ORIGIN_BASE_URL: http://example-origin:9000
+      EDGE_ORIGIN_SHIELD_URLS: ${EDGE_ORIGIN_SHIELD_URLS:-}
+      EDGE_SIGNING_ENABLED: ${EDGE_SIGNING_ENABLED:-false}
+      EDGE_SIGNING_SECRET: ${EDGE_SIGNING_SECRET:-}
+      EDGE_SIGNED_COOKIE_ENABLED: ${EDGE_SIGNED_COOKIE_ENABLED:-false}
+      EDGE_SIGNED_COOKIE_NAME: ${EDGE_SIGNED_COOKIE_NAME:-AstraCDN-Signature}
+      EDGE_SIGNED_COOKIE_PATH_PREFIXES: ${EDGE_SIGNED_COOKIE_PATH_PREFIXES:-}
+      EDGE_REVALIDATION_MAX_STALE: ${EDGE_REVALIDATION_MAX_STALE:-24h}
+      EDGE_COMPRESSION_ENABLED: ${EDGE_COMPRESSION_ENABLED:-true}
+      EDGE_BROTLI_ENABLED: ${EDGE_BROTLI_ENABLED:-true}
+      EDGE_COMPRESSION_MIN_BYTES: ${EDGE_COMPRESSION_MIN_BYTES:-512}
+      EDGE_LARGE_OBJECT_STREAMING_ENABLED: ${EDGE_LARGE_OBJECT_STREAMING_ENABLED:-true}
+      EDGE_LARGE_OBJECT_THRESHOLD_BYTES: ${EDGE_LARGE_OBJECT_THRESHOLD_BYTES:-8388608}
+      EDGE_SEGMENTED_CACHE_ENABLED: ${EDGE_SEGMENTED_CACHE_ENABLED:-true}
+      EDGE_SEGMENT_SIZE_BYTES: ${EDGE_SEGMENT_SIZE_BYTES:-1048576}
+      EDGE_IMAGE_TRANSFORM_ENABLED: ${EDGE_IMAGE_TRANSFORM_ENABLED:-true}
+      EDGE_IMAGE_TRANSFORM_MAX_DIMENSION: ${EDGE_IMAGE_TRANSFORM_MAX_DIMENSION:-2048}
+      EDGE_IMAGE_TRANSFORM_JPEG_QUALITY: ${EDGE_IMAGE_TRANSFORM_JPEG_QUALITY:-82}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+      CORS_ENABLED: ${CORS_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_ALLOWED_METHODS: ${CORS_ALLOWED_METHODS:-GET,POST,OPTIONS}
+      CORS_ALLOWED_HEADERS: ${CORS_ALLOWED_HEADERS:-Authorization,Content-Type,X-AstraCDN-API-Key,X-Request-ID}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      CORS_MAX_AGE: ${CORS_MAX_AGE:-600}
+    ports:
+      - "8083:8080"
+    depends_on:
+      - redis
+      - nats
+      - example-origin
+
+  edge-ingress:
+    build:
+      context: .
+      dockerfile: services/ingress/Containerfile
+    ports:
+      - "8443:8443/tcp"
+      - "8443:8443/udp"
+    volumes:
+      - ./deploy/local/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - edge
+
+  control:
+    build:
+      context: .
+      dockerfile: services/control/Containerfile
+    environment:
+      ASTRACDN_ENV: ${ASTRACDN_ENV:-local}
+      CONTROL_PORT: 8081
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-astracdn}
+      POSTGRES_USER: ${POSTGRES_USER:-astracdn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astracdn_local_password}
+      NATS_URL: nats://nats:4222
+      ASTRACDN_API_KEY: ${ASTRACDN_API_KEY:-astracdn-local-dev-key}
+      CONTROL_AUDIT_LOG_ENABLED: ${CONTROL_AUDIT_LOG_ENABLED:-true}
+      CONTROL_DOMAIN_VERIFICATION_BYPASS: ${CONTROL_DOMAIN_VERIFICATION_BYPASS:-false}
+      CONTROL_BILLING_WEBHOOK_SECRET: ${CONTROL_BILLING_WEBHOOK_SECRET:-}
+      CONTROL_OTLP_METRICS_ENDPOINT: ${CONTROL_OTLP_METRICS_ENDPOINT:-}
+      CONTROL_OTLP_HEADERS: ${CONTROL_OTLP_HEADERS:-}
+      CONTROL_OTLP_EXPORT_TIMEOUT: ${CONTROL_OTLP_EXPORT_TIMEOUT:-5s}
+      CONTROL_WAREHOUSE_JSONL_PATH: ${CONTROL_WAREHOUSE_JSONL_PATH:-}
+      EDGE_HEALTH_STALE_AFTER: ${EDGE_HEALTH_STALE_AFTER:-2m}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+      HTTP_MAX_REQUEST_BODY_BYTES: ${HTTP_MAX_REQUEST_BODY_BYTES:-1048576}
+      CORS_ENABLED: ${CORS_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_ALLOWED_METHODS: ${CORS_ALLOWED_METHODS:-GET,POST,OPTIONS}
+      CORS_ALLOWED_HEADERS: ${CORS_ALLOWED_HEADERS:-Authorization,Content-Type,X-AstraCDN-API-Key,X-AstraCDN-Billing-Signature,X-Request-ID}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      CORS_MAX_AGE: ${CORS_MAX_AGE:-600}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - nats
+
+  inference:
+    build:
+      context: .
+      dockerfile: services/inference/Containerfile
+    environment:
+      ASTRACDN_ENV: ${ASTRACDN_ENV:-local}
+      INFERENCE_PORT: 8082
+      INFERENCE_PROVIDER: ${INFERENCE_PROVIDER:-openai}
+      INFERENCE_MODEL: ${INFERENCE_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_CLIENT: ${OPENAI_CLIENT:-astra-cdn}
+      OPENAI_CLIENT_VERSION: ${OPENAI_CLIENT_VERSION:-0}
+      SEMANTIC_CACHE_ENABLED: "false"
+      ASTRACDN_API_KEY: ${ASTRACDN_API_KEY:-astracdn-local-dev-key}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${INFERENCE_HTTP_WRITE_TIMEOUT:-0s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+      HTTP_MAX_REQUEST_BODY_BYTES: ${HTTP_MAX_REQUEST_BODY_BYTES:-1048576}
+      CORS_ENABLED: ${CORS_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_ALLOWED_METHODS: ${CORS_ALLOWED_METHODS:-GET,POST,OPTIONS}
+      CORS_ALLOWED_HEADERS: ${CORS_ALLOWED_HEADERS:-Authorization,Content-Type,X-AstraCDN-API-Key,X-Request-ID}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      CORS_MAX_AGE: ${CORS_MAX_AGE:-600}
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+    ports:
+      - "8082:8082"
+    depends_on:
+      - redis
+      - nats
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Containerfile
+    environment:
+      ASTRACDN_API_KEY: ${ASTRACDN_API_KEY:-astracdn-local-dev-key}
+      DASHBOARD_ACCESS_TOKEN: ${DASHBOARD_ACCESS_TOKEN:-}
+      DASHBOARD_PORT: 3000
+      DASHBOARD_CONTROL_BASE_URL: http://control:8081
+      DASHBOARD_EDGE_BASE_URL: http://edge:8080
+      DASHBOARD_INFERENCE_BASE_URL: http://inference:8082
+      DASHBOARD_PUBLIC_CDN_BASE_URL: ${DASHBOARD_PUBLIC_CDN_BASE_URL:-http://cdn.localhost:8080}
+      DASHBOARD_PROXY_TIMEOUT: ${DASHBOARD_PROXY_TIMEOUT:-10s}
+      DASHBOARD_STORAGE_MODE: ${DASHBOARD_STORAGE_MODE:-local}
+      DASHBOARD_ASSET_DIR: /var/lib/astra-cdn/origin
+      DASHBOARD_MAX_UPLOAD_BYTES: ${DASHBOARD_MAX_UPLOAD_BYTES:-104857600}
+      DASHBOARD_S3_ENDPOINT: ${DASHBOARD_S3_ENDPOINT:-}
+      DASHBOARD_S3_BUCKET: ${DASHBOARD_S3_BUCKET:-}
+      DASHBOARD_S3_REGION: ${DASHBOARD_S3_REGION:-us-east-1}
+      DASHBOARD_S3_ACCESS_KEY_ID: ${DASHBOARD_S3_ACCESS_KEY_ID:-}
+      DASHBOARD_S3_SECRET_ACCESS_KEY: ${DASHBOARD_S3_SECRET_ACCESS_KEY:-}
+      DASHBOARD_S3_SESSION_TOKEN: ${DASHBOARD_S3_SESSION_TOKEN:-}
+      DASHBOARD_S3_PREFIX: ${DASHBOARD_S3_PREFIX:-}
+      DASHBOARD_S3_FORCE_PATH_STYLE: ${DASHBOARD_S3_FORCE_PATH_STYLE:-true}
+      DASHBOARD_S3_TIMEOUT: ${DASHBOARD_S3_TIMEOUT:-30s}
+      HTTP_READ_HEADER_TIMEOUT: ${HTTP_READ_HEADER_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data/origin:/var/lib/astra-cdn/origin:rw
+    depends_on:
+      - control
+      - edge
+      - inference
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  caddy-data:
+  caddy-config:

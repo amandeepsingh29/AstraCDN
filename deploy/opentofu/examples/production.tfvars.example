@@ -1,0 +1,25 @@
+environment = "production"
+
+regions = [
+  "us-east-1",
+  "us-west-2",
+  "eu-west-1",
+  "ap-south-1",
+]
+
+cdn_domain       = "cdn.example.com"
+dashboard_domain = "dashboard.example.com"
+
+container_registry = "ghcr.io/your-org"
+
+edge_replicas          = 3
+edge_service_type      = "LoadBalancer"
+edge_hostname_template = "edge-{region}.{cdn_domain}"
+global_routing_mode    = "latency_dns"
+dns_provider           = "external"
+
+control_base_url = "https://control.example.com"
+redis_addr       = "redis.example.com:6379"
+nats_url         = "nats://nats.example.com:4222"
+
+object_storage_bucket = "astra-cdn-assets-prod"

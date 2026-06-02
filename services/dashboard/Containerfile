@@ -1,0 +1,13 @@
+FROM docker.io/library/golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY go.sum ./
+COPY services/dashboard ./services/dashboard
+RUN go build -o /out/dashboard ./services/dashboard/cmd/dashboard
+
+FROM docker.io/library/alpine:3.20
+RUN adduser -D -H astracdn
+USER astracdn
+COPY --from=build /out/dashboard /usr/local/bin/dashboard
+EXPOSE 3000
+ENTRYPOINT ["/usr/local/bin/dashboard"]

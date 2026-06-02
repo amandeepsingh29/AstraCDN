@@ -1,0 +1,14 @@
+FROM docker.io/library/golang:1.25-alpine AS build
+
+RUN go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.10.2
+
+FROM docker.io/library/alpine:3.20
+
+RUN adduser -D -H caddy
+COPY --from=build /go/bin/caddy /usr/local/bin/caddy
+
+EXPOSE 8443/tcp
+EXPOSE 8443/udp
+
+ENTRYPOINT ["/usr/local/bin/caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

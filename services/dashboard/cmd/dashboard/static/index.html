@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AstraCDN Control Deck</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AstraCDN dashboard</p>
+          <h1>Control the edge without leaving the browser.</h1>
+          <p class="lede">Watch cache behavior, inspect routes and domains, purge objects, and check service health from one local control deck.</p>
+        </div>
+        <div class="hero-panel">
+          <span class="pulse"></span>
+          <div>
+            <strong id="system-status">Loading</strong>
+            <small id="system-subtitle">Checking edge, control, and inference.</small>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-panel">
+        <div>
+          <p class="eyebrow">Access</p>
+          <strong id="auth-status">Dashboard token required</strong>
+          <small>Use `DASHBOARD_ACCESS_TOKEN`, or the local API key if no dashboard token is set.</small>
+        </div>
+        <form id="auth-form">
+          <input id="dashboard-token" name="token" type="password" placeholder="astracdn-local-dev-key" autocomplete="current-password">
+          <button type="submit">Unlock</button>
+          <button id="lock-dashboard" type="button" class="ghost">Lock</button>
+        </form>
+      </section>
+
+      <section class="metrics-grid">
+        <article class="metric-card graphite">
+          <span>Requests</span>
+          <strong id="metric-requests">0</strong>
+          <small>Total edge cache requests</small>
+        </article>
+        <article class="metric-card amber">
+          <span>Hit ratio</span>
+          <strong id="metric-hit-ratio">0%</strong>
+          <small>Memory + Redis hits</small>
+        </article>
+        <article class="metric-card teal">
+          <span>Routes</span>
+          <strong id="metric-routes">0</strong>
+          <small>Configured host/path routes</small>
+        </article>
+        <article class="metric-card clay">
+          <span>Domains</span>
+          <strong id="metric-domains">0</strong>
+          <small>Custom CDN domains</small>
+        </article>
+      </section>
+
+      <section class="workbench">
+        <article class="panel span-2">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Live services</p>
+              <h2>Health</h2>
+            </div>
+            <button id="refresh">Refresh</button>
+          </div>
+          <div id="health-list" class="status-list"></div>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">CDN tester</p>
+          <h2>Fetch through edge</h2>
+          <form id="cdn-fetch-form" class="inline-form">
+            <label>
+              Host
+              <input name="host" value="cdn.localhost">
+            </label>
+            <label>
+              Edge path
+              <input name="path" value="/edge/demo.txt">
+            </label>
+            <button type="submit">Fetch</button>
+          </form>
+          <div id="cdn-fetch-summary" class="fetch-summary"></div>
+          <pre id="cdn-fetch-result" class="result">No CDN request yet.</pre>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Asset origin</p>
+          <h2>Upload photo or video</h2>
+          <div class="storage-status">
+            <span id="asset-storage-mode">UNKNOWN</span>
+            <strong id="asset-storage-location">Checking asset storage</strong>
+            <small id="asset-storage-status">not checked</small>
+          </div>
+          <form id="asset-upload-form" class="upload-form">
+            <label>
+              CDN host
+              <input name="host" value="cdn.localhost" placeholder="cdn.localhost">
+            </label>
+            <label>
+              Folder
+              <input name="folder" value="uploads" placeholder="uploads">
+            </label>
+            <label>
+              File
+              <input name="file" type="file" required>
+            </label>
+            <button type="submit">Upload asset</button>
+          </form>
+          <p id="asset-upload-hint" class="hint">Uploads are saved into the configured asset storage, then served through `/edge/assets/...`.</p>
+          <pre id="asset-upload-result" class="result">No asset uploaded yet.</pre>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Asset origin</p>
+          <h2 id="asset-inventory-title">Asset inventory</h2>
+          <form id="asset-filter-form" class="asset-filter-form">
+            <label>
+              Action CDN host
+              <input id="asset-action-host" name="host" value="cdn.localhost" placeholder="cdn.localhost">
+            </label>
+            <label>
+              Folder
+              <input name="folder" placeholder="uploads">
+            </label>
+            <label>
+              Limit
+              <input name="limit" type="number" value="20" min="1" max="1000">
+            </label>
+            <button type="submit">Filter assets</button>
+            <button id="prewarm-loaded-assets" type="submit" class="ghost">Prewarm loaded</button>
+            <button id="purge-loaded-assets" type="submit" class="ghost">Purge loaded</button>
+          </form>
+          <div id="assets" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Action</p>
+          <h2>Purge cache</h2>
+          <form id="purge-form" class="stack">
+            <label>
+              Host optional
+              <input name="host" placeholder="cdn.localhost">
+            </label>
+            <label>
+              Mode
+              <select name="mode">
+                <option value="keys">Exact key</option>
+                <option value="prefixes">Prefix</option>
+                <option value="tags">Surrogate tag</option>
+              </select>
+            </label>
+            <label>
+              Values comma separated
+              <input name="values" placeholder="/edge/demo.txt">
+            </label>
+            <button type="submit">Publish purge</button>
+          </form>
+          <pre id="purge-result" class="result">No purge submitted yet.</pre>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Configuration</p>
+          <h2>Create origin</h2>
+          <form id="origin-form" class="stack">
+            <label>
+              Name
+              <input name="name" value="primary">
+            </label>
+            <label>
+              Base URL
+              <input name="base_url" value="http://example-origin:9000">
+            </label>
+            <button type="submit">Save origin</button>
+          </form>
+          <pre id="origin-result" class="result">Ready.</pre>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Configuration</p>
+          <h2>Create route</h2>
+          <form id="route-form" class="stack">
+            <label>
+              Host
+              <input name="host" value="cdn.localhost">
+            </label>
+            <label>
+              Path prefix
+              <input name="path_prefix" value="/">
+            </label>
+            <label>
+              Origin ID
+              <input name="origin_id" type="number" value="1" min="1">
+            </label>
+            <label>
+              TTL seconds
+              <input name="ttl" type="number" value="300" min="0">
+            </label>
+            <fieldset class="rule-fieldset">
+              <legend>Response header rule</legend>
+              <label>
+                Match path prefix
+                <input name="header_path_prefix" placeholder="/edge/assets/">
+              </label>
+              <label>
+                Header name
+                <input name="header_name" placeholder="X-AstraCDN-Rule">
+              </label>
+              <label>
+                Header value
+                <input name="header_value" placeholder="enabled">
+              </label>
+            </fieldset>
+            <fieldset class="rule-fieldset">
+              <legend>WAF path block</legend>
+              <label class="check-label">
+                <input name="waf_enabled" type="checkbox">
+                Enable route WAF block
+              </label>
+              <label>
+                Block path prefix
+                <input name="waf_path_prefix" placeholder="/edge/admin/">
+              </label>
+            </fieldset>
+            <fieldset class="rule-fieldset">
+              <legend>Rate limit rule</legend>
+              <label>
+                Match path prefix
+                <input name="rate_limit_path_prefix" placeholder="/edge/downloads/">
+              </label>
+              <label>
+                RPS
+                <input name="rate_limit_rps" type="number" value="0" min="0" step="0.1">
+              </label>
+              <label>
+                Burst
+                <input name="rate_limit_burst" type="number" value="0" min="0" step="0.1">
+              </label>
+            </fieldset>
+            <button type="submit">Save route</button>
+          </form>
+          <pre id="route-result" class="result">Ready.</pre>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Control plane</p>
+          <h2>Routes</h2>
+          <div id="routes" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Control plane</p>
+          <h2>Origins</h2>
+          <div id="origins" class="cards-list"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Control plane</p>
+          <h2>Domains</h2>
+          <form id="domain-form" class="stack">
+            <label>
+              Host
+              <input name="host" value="cdn.localhost" placeholder="cdn.example">
+            </label>
+            <label>
+              TLS mode
+              <select name="tls_mode">
+                <option value="managed">Managed</option>
+                <option value="manual">Manual</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label>
+              Route ID optional
+              <input name="route_id" type="number" min="1" placeholder="1">
+            </label>
+            <button type="submit">Save domain</button>
+          </form>
+          <pre id="domain-result" class="result">Ready.</pre>
+          <div id="domains" class="cards-list"></div>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Operations</p>
+          <h2>Recent audit logs</h2>
+          <div id="audit-logs" class="table-wrap"></div>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Operations</p>
+          <h2>Route rule versions</h2>
+          <form id="route-rule-version-form" class="inline-form">
+            <label>
+              Route ID optional
+              <input name="route_id" type="number" min="1" placeholder="1">
+            </label>
+            <label>
+              Limit
+              <input name="limit" type="number" value="10" min="1" max="100">
+            </label>
+            <button type="submit">Filter versions</button>
+          </form>
+          <div id="route-rule-versions" class="table-wrap"></div>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">Security</p>
+          <h2>API keys</h2>
+          <form id="api-key-form" class="inline-form">
+            <label>
+              Name
+              <input name="name" value="deploy" placeholder="deploy">
+            </label>
+            <label>
+              Scopes comma separated
+              <input name="scopes" value="control:write,edge:read" placeholder="control:write,edge:read">
+            </label>
+            <button type="submit">Create key</button>
+          </form>
+          <pre id="api-key-result" class="result">New key secret appears once after creation.</pre>
+          <div id="api-keys" class="table-wrap"></div>
+        </article>
+
+        <article class="panel span-2">
+          <p class="eyebrow">SaaS controls</p>
+          <h2>Tenants</h2>
+          <form id="tenant-form" class="inline-form">
+            <label>
+              Name
+              <input name="name" value="Acme Media" placeholder="Acme Media">
+            </label>
+            <label>
+              Slug
+              <input name="slug" value="acme-media" placeholder="acme-media">
+            </label>
+            <button type="submit">Save tenant</button>
+          </form>
+          <pre id="tenant-result" class="result">Ready.</pre>
+          <div id="tenants" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">SaaS controls</p>
+          <h2>Assign RBAC user</h2>
+          <form id="tenant-user-form" class="stack">
+            <label>
+              Tenant ID
+              <input name="tenant_id" type="number" min="1" placeholder="1">
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" placeholder="owner@example.com">
+            </label>
+            <label>
+              Role
+              <select name="role">
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="operator">Operator</option>
+                <option value="viewer">Viewer</option>
+                <option value="billing">Billing</option>
+              </select>
+            </label>
+            <button type="submit">Save user</button>
+          </form>
+          <pre id="tenant-user-result" class="result">Ready.</pre>
+          <div id="tenant-users" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">SaaS controls</p>
+          <h2>Billing account</h2>
+          <form id="billing-form" class="stack">
+            <label>
+              Tenant ID
+              <input name="tenant_id" type="number" min="1" placeholder="1">
+            </label>
+            <label>
+              Provider
+              <input name="provider" value="stripe" placeholder="stripe">
+            </label>
+            <label>
+              Customer ID
+              <input name="provider_customer_id" placeholder="cus_...">
+            </label>
+            <label>
+              Plan
+              <input name="plan" value="developer" placeholder="developer">
+            </label>
+            <button type="submit">Save billing</button>
+          </form>
+          <pre id="billing-result" class="result">Ready.</pre>
+          <div id="billing-accounts" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">SaaS controls</p>
+          <h2>Billing webhook events</h2>
+          <div id="billing-webhook-events" class="table-wrap"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Analytics</p>
+          <h2>Cache layers</h2>
+          <div id="cache-layers" class="cards-list"></div>
+        </article>
+
+        <article class="panel">
+          <p class="eyebrow">Edges</p>
+          <h2>Node health</h2>
+          <div id="edge-health" class="cards-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

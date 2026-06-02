@@ -1,0 +1,12 @@
+{
+	admin off
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+localhost:8443, cdn.localhost:8443 {
+	tls internal
+	header Alt-Svc "h3=\":8443\"; ma=86400"
+	reverse_proxy edge:8080
+}

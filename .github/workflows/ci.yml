@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build Go packages
+        run: go build ./...
+
+      - name: Check shell script syntax
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            bash -n "$script"
+          done < <(find scripts -type f -name '*.sh' | sort)
+
+      - name: Validate YAML syntax
+        run: |
+          ruby -ryaml -e '
+            files = Dir["**/*.{yaml,yml}", ".github/workflows/*.{yaml,yml}"].uniq
+            files.each { |file| YAML.load_stream(File.read(file)) }
+            puts "validated #{files.length} YAML files"
+          '

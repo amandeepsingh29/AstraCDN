@@ -1,0 +1,13 @@
+{
+	email ops@example.com
+}
+
+cdn.example.com {
+	encode zstd gzip
+	reverse_proxy edge:8080
+}
+
+dashboard.example.com {
+	encode zstd gzip
+	reverse_proxy dashboard:3000
+}

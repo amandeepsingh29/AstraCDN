@@ -1,0 +1,2400 @@
+openapi: 3.1.0
+info:
+  title: AstraCDN Local API
+  version: 0.1.0
+  description: |
+    OpenAPI contract for the current AstraCDN local development stack.
+    The stack is split across edge, control, and inference services.
+servers:
+  - url: http://localhost:8080
+    description: Edge service
+  - url: http://localhost:8081
+    description: Control service
+  - url: http://localhost:8082
+    description: Inference service
+tags:
+  - name: Edge
+  - name: Control
+  - name: Inference
+  - name: Health
+  - name: Metrics
+security: []
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service liveness check
+      description: Available on edge, control, and inference services.
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service process is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Service readiness check
+      description: Available on edge, control, and inference services.
+      operationId: getReady
+      responses:
+        "200":
+          description: Service dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: One or more service dependencies are not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Prometheus metrics
+      description: Available on edge, control, and inference services.
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus text exposition payload.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/cache/analytics:
+    get:
+      tags:
+        - Edge
+      summary: Edge cache analytics
+      description: Returns JSON cache request counters and hit ratio for the edge process.
+      operationId: getEdgeCacheAnalytics
+      responses:
+        "200":
+          description: Edge cache analytics snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheAnalyticsResponse"
+  /v1/origins:
+    get:
+      tags:
+        - Control
+      summary: List configured origins
+      operationId: listOrigins
+      responses:
+        "200":
+          description: Configured CDN origins.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - origins
+                properties:
+                  origins:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Origin"
+    post:
+      tags:
+        - Control
+      summary: Create or update an origin
+      operationId: upsertOrigin
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OriginRequest"
+      responses:
+        "202":
+          description: Origin was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OriginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/routes:
+    get:
+      tags:
+        - Control
+      summary: List configured CDN routes
+      operationId: listRoutes
+      responses:
+        "200":
+          description: Configured host and path routes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - routes
+                properties:
+                  routes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Route"
+    post:
+      tags:
+        - Control
+      summary: Create or update a CDN route
+      operationId: upsertRoute
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteRequest"
+      responses:
+        "202":
+          description: Route was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/route-rule-versions:
+    get:
+      tags:
+        - Control
+      summary: List route rule versions
+      operationId: listRouteRuleVersions
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: route_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Route rule version history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  route_rule_versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RouteRuleVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/domains:
+    get:
+      tags:
+        - Control
+      summary: List configured CDN domains
+      operationId: listDomains
+      responses:
+        "200":
+          description: Configured custom domains.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - domains
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Domain"
+    post:
+      tags:
+        - Control
+      summary: Create or update a CDN domain
+      operationId: upsertDomain
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainRequest"
+      responses:
+        "202":
+          description: Domain was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/domains/verify:
+    post:
+      tags:
+        - Control
+      summary: Verify CDN domain DNS ownership
+      operationId: verifyDomain
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainVerificationRequest"
+      responses:
+        "200":
+          description: Domain DNS record matched and the domain is active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainVerificationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: DNS record is missing or does not match yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainVerificationPendingResponse"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /edge/{path}:
+    get:
+      tags:
+        - Edge
+      summary: Fetch an object through the edge cache
+      description: |
+        Proxies a GET request to the configured origin and caches successful
+        responses when the origin sends a cacheable shared-cache directive.
+        `s-maxage` takes precedence over `max-age`; `private` and `no-store`
+        are not cached. Client `Cache-Control: no-cache` and cacheable origin
+        `Cache-Control: no-cache` responses force conditional revalidation when
+        validators are available. Stale cached objects with `ETag` or
+        `Last-Modified` validators are conditionally revalidated with the origin
+        before the edge fetches a full replacement body. Expired objects with
+        `stale-if-error=<seconds>` can be served with `X-AstraCDN-Cache: STALE`
+        when origin fetch or revalidation fails or returns `5xx`. Named `Vary`
+        headers create separate cache variants keyed by request header values;
+        `Vary: *` responses are not cached. Eligible full-object responses are
+        gzip-compressed when callers send `Accept-Encoding: gzip`. Origin
+        fetch and revalidation can be configured to retry network failures,
+        timeouts, and `5xx` responses, use an optional origin shield tier,
+        then fail over to configured backup origins. When signed URL validation is enabled, callers must include
+        `expires` and `signature` query parameters.
+      operationId: getEdgeObject
+      parameters:
+        - name: path
+          in: path
+          required: true
+          description: Origin path after the `/edge/` prefix.
+          schema:
+            type: string
+        - name: expires
+          in: query
+          required: false
+          description: Unix timestamp required when signed URLs are enabled.
+          schema:
+            type: integer
+            format: int64
+        - name: signature
+          in: query
+          required: false
+          description: Hex HMAC-SHA256 signature required when signed URLs are enabled.
+          schema:
+            type: string
+        - name: Range
+          in: header
+          required: false
+          description: Single byte range, for example `bytes=0-1023`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Origin object response.
+          headers:
+            X-AstraCDN-Cache:
+              description: Cache result.
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+                  - REVALIDATED
+                  - STALE
+                  - BYPASS
+            X-AstraCDN-Cache-Layer:
+              description: Cache layer that served the response.
+              schema:
+                type: string
+                enum:
+                  - memory
+                  - redis
+                  - origin
+                  - memory-stale
+                  - redis-stale
+                  - origin-revalidate
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            Accept-Ranges:
+              description: Byte range support marker for cacheable objects.
+              schema:
+                type: string
+                enum:
+                  - bytes
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial object response for a satisfiable byte range.
+          headers:
+            X-AstraCDN-Cache:
+              description: Cache result.
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+                  - REVALIDATED
+                  - STALE
+                  - BYPASS
+            X-AstraCDN-Cache-Layer:
+              description: Cache layer that served the response.
+              schema:
+                type: string
+            Content-Range:
+              description: Served byte range.
+              schema:
+                type: string
+            Accept-Ranges:
+              description: Byte range support marker.
+              schema:
+                type: string
+                enum:
+                  - bytes
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "416":
+          description: Requested byte range is not satisfiable.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "403":
+          description: Signed URL validation failed.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: Origin fetch failed.
+          content:
+            text/plain:
+              schema:
+                type: string
+    head:
+      tags:
+        - Edge
+      summary: Fetch edge object headers
+      description: Performs the same cache lookup and origin fill behavior as GET, but returns headers only.
+      operationId: headEdgeObject
+      parameters:
+        - name: path
+          in: path
+          required: true
+          description: Origin path after the `/edge/` prefix.
+          schema:
+            type: string
+        - name: expires
+          in: query
+          required: false
+          description: Unix timestamp required when signed URLs are enabled.
+          schema:
+            type: integer
+            format: int64
+        - name: signature
+          in: query
+          required: false
+          description: Hex HMAC-SHA256 signature required when signed URLs are enabled.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Origin object headers.
+          headers:
+            X-AstraCDN-Cache:
+              description: Cache result.
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+                  - REVALIDATED
+                  - STALE
+                  - BYPASS
+            X-AstraCDN-Cache-Layer:
+              description: Cache layer that served the response.
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+        "403":
+          description: Signed URL validation failed.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: Origin fetch failed.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/edge/register:
+    post:
+      tags:
+        - Control
+      summary: Register or heartbeat an edge node
+      operationId: registerEdgeNode
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterEdgeNodeRequest"
+      responses:
+        "202":
+          description: Edge node was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterEdgeNodeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/edge/nodes:
+    get:
+      tags:
+        - Control
+      summary: List registered edge nodes
+      operationId: listEdgeNodes
+      responses:
+        "200":
+          description: Registered edge nodes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - nodes
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EdgeNode"
+  /v1/edge/health:
+    get:
+      tags:
+        - Control
+      summary: List edge health and latest cache-fill latency
+      operationId: listEdgeHealth
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      responses:
+        "200":
+          description: Edge health dashboard payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - edges
+                properties:
+                  edges:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EdgeHealth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/api-keys:
+    get:
+      tags:
+        - Control
+      summary: List control-plane API keys
+      operationId: listAPIKeys
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      responses:
+        "200":
+          description: API key metadata. Secret key values are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - api_keys
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Control
+      summary: Create a control-plane API key
+      operationId: createAPIKey
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreateRequest"
+      responses:
+        "201":
+          description: API key was created. The `key` value is returned only once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/api-keys/revoke:
+    post:
+      tags:
+        - Control
+      summary: Revoke a control-plane API key
+      operationId: revokeAPIKey
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRevokeRequest"
+      responses:
+        "200":
+          description: API key was revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevokeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/billing/webhooks:
+    post:
+      tags:
+        - Control
+      summary: Apply a provider-neutral billing webhook
+      description: Updates an existing billing account status by tenant ID or provider customer ID.
+      operationId: applyBillingWebhook
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: X-AstraCDN-Billing-Signature
+          in: header
+          required: false
+          description: HMAC-SHA256 signature over the raw JSON body, formatted as `sha256=<hex>`. Required when `CONTROL_BILLING_WEBHOOK_SECRET` is set.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingWebhookRequest"
+      responses:
+        "200":
+          description: Billing webhook event was already processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWebhookResponse"
+        "202":
+          description: Billing account status was updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWebhookResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/billing/webhook-events:
+    get:
+      tags:
+        - Control
+      summary: List billing webhook ledger events
+      description: Returns recently processed provider webhook event IDs for idempotency and billing rollout visibility.
+      operationId: listBillingWebhookEvents
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: billing_account_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Billing webhook events were returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWebhookEventListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/audit-logs:
+    get:
+      tags:
+        - Control
+      summary: List control-plane audit logs
+      description: Returns successful control-plane write operations recorded by the control service.
+      operationId: listAuditLogs
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - audit_logs
+                properties:
+                  audit_logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLogEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/analytics/cache-snapshots:
+    get:
+      tags:
+        - Control
+      summary: List persisted cache analytics snapshots
+      operationId: listCacheAnalyticsSnapshots
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Recent cache analytics snapshots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - snapshots
+                properties:
+                  snapshots:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CacheAnalyticsSnapshot"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Control
+      summary: Persist a cache analytics snapshot
+      operationId: createCacheAnalyticsSnapshot
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CacheAnalyticsSnapshotRequest"
+      responses:
+        "202":
+          description: Cache analytics snapshot was persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheAnalyticsSnapshotResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/analytics/cache-snapshots/prometheus:
+    get:
+      tags:
+        - Control
+      summary: Export persisted cache analytics snapshots as Prometheus text
+      operationId: exportCacheAnalyticsSnapshotsPrometheus
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Prometheus text exposition for recent persisted cache analytics snapshots.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/cache/invalidate:
+    post:
+      tags:
+        - Control
+      summary: Publish a cache invalidation
+      description: Provide exactly one of `keys`, `prefixes`, or `tags`. Tag invalidation uses cached origin `Surrogate-Key` response headers. Include `host` to purge only one CDN hostname; omit `host` to purge matching cache entries across all hosts.
+      operationId: createCacheInvalidation
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CacheInvalidationRequest"
+      responses:
+        "202":
+          description: Invalidation was stored and published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheInvalidationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/cache/prewarm:
+    post:
+      tags:
+        - Control
+      summary: Publish a cache prewarm request
+      description: Stores a prewarm job and asks edges to fetch cacheable `/edge/*` paths from origin.
+      operationId: createCachePrewarm
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CachePrewarmRequest"
+      responses:
+        "202":
+          description: Prewarm job was stored and published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CachePrewarmResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/cache/invalidation-deliveries:
+    get:
+      tags:
+        - Control
+      summary: List delivery acknowledgements for a cache invalidation
+      operationId: listCacheInvalidationDeliveries
+      parameters:
+        - name: invalidation_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Delivery acknowledgements by edge node.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheInvalidationDeliveriesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags:
+        - Control
+      summary: Record an edge delivery acknowledgement for a cache invalidation
+      operationId: recordCacheInvalidationDelivery
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CacheInvalidationDeliveryRequest"
+      responses:
+        "202":
+          description: Delivery acknowledgement was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheInvalidationDeliveryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /v1/infer:
+    post:
+      tags:
+        - Inference
+      summary: Generate text through the inference gateway
+      operationId: infer
+      security:
+        - bearerAuth: []
+        - astraApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InferRequest"
+      responses:
+        "200":
+          description: Inference response or Server-Sent Events stream.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InferResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream of `token`, `done`, or `error` events.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/RequestTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: Provider call failed.
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    astraApiKey:
+      type: apiKey
+      in: header
+      name: X-AstraCDN-API-Key
+  headers:
+    RequestID:
+      description: Request ID generated by AstraCDN or preserved from `X-Request-ID`.
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Unauthorized:
+      description: Missing or invalid AstraCDN API key.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Forbidden:
+      description: API key is valid but does not include the required scope.
+      content:
+        text/plain:
+          schema:
+            type: string
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        text/plain:
+          schema:
+            type: string
+    RequestTooLarge:
+      description: JSON request body exceeds `HTTP_MAX_REQUEST_BODY_BYTES`.
+      content:
+        text/plain:
+          schema:
+            type: string
+    RateLimited:
+      description: Request was rejected by rate limiting.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: string
+      content:
+        text/plain:
+          schema:
+            type: string
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - service
+        - status
+      properties:
+        service:
+          type: string
+          enum:
+            - edge
+            - control
+            - inference
+        status:
+          type: string
+          enum:
+            - ok
+    ReadyResponse:
+      type: object
+      required:
+        - service
+        - ready
+        - checks
+      properties:
+        service:
+          type: string
+          enum:
+            - edge
+            - control
+            - inference
+        ready:
+          type: boolean
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    CacheAnalyticsResponse:
+      type: object
+      required:
+        - cache
+      properties:
+        cache:
+          type: object
+          required:
+            - requests
+            - hits
+            - misses
+            - hit_ratio
+            - by_layer
+          properties:
+            requests:
+              type: integer
+              format: int64
+              minimum: 0
+            hits:
+              type: integer
+              format: int64
+              minimum: 0
+            misses:
+              type: integer
+              format: int64
+              minimum: 0
+            hit_ratio:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 1
+            by_layer:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/CacheAnalyticsLayerCounter"
+            by_host:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/CacheAnalyticsBreakout"
+            by_route:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/CacheAnalyticsBreakout"
+            cache_fill_latency:
+              $ref: "#/components/schemas/CacheFillLatency"
+    CacheAnalyticsLayerCounter:
+      type: object
+      required:
+        - result
+        - requests
+      properties:
+        result:
+          type: string
+          enum:
+            - hit
+            - miss
+        requests:
+          type: integer
+          format: int64
+          minimum: 0
+    CacheAnalyticsBreakout:
+      type: object
+      required:
+        - requests
+        - hits
+        - misses
+        - hit_ratio
+        - by_layer
+      properties:
+        requests:
+          type: integer
+          format: int64
+          minimum: 0
+        hits:
+          type: integer
+          format: int64
+          minimum: 0
+        misses:
+          type: integer
+          format: int64
+          minimum: 0
+        hit_ratio:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        by_layer:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CacheAnalyticsLayerCounter"
+    CacheFillLatency:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+        sum_seconds:
+          type: number
+          format: double
+          minimum: 0
+        avg_seconds:
+          type: number
+          format: double
+          minimum: 0
+        max_seconds:
+          type: number
+          format: double
+          minimum: 0
+    RegisterEdgeNodeRequest:
+      type: object
+      required:
+        - node_id
+        - address
+      properties:
+        node_id:
+          type: string
+          examples:
+            - edge-local-1
+        address:
+          type: string
+          examples:
+            - http://edge:8080
+        capabilities:
+          type: array
+          items:
+            type: string
+          examples:
+            - - cache
+              - proxy
+    OriginRequest:
+      type: object
+      required:
+        - name
+        - base_url
+      properties:
+        name:
+          type: string
+          examples:
+            - primary
+        base_url:
+          type: string
+          format: uri
+          examples:
+            - https://origin.example
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          examples:
+            - X-Origin-Auth: secret
+    OriginResponse:
+      type: object
+      required:
+        - status
+        - origin
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+            - duplicate
+        origin:
+          $ref: "#/components/schemas/Origin"
+    Origin:
+      type: object
+      required:
+        - id
+        - name
+        - base_url
+        - headers
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        base_url:
+          type: string
+          format: uri
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RouteRequest:
+      type: object
+      required:
+        - host
+        - path_prefix
+        - origin_id
+      properties:
+        host:
+          type: string
+          examples:
+            - cdn.example
+        path_prefix:
+          type: string
+          examples:
+            - /assets/
+        origin_id:
+          type: integer
+          format: int64
+          examples:
+            - 1
+        cache_ttl_seconds:
+          description: Backward-compatible shortcut for cache_policy.ttl_seconds.
+          type: integer
+          minimum: 0
+          examples:
+            - 300
+        cache_policy:
+          $ref: "#/components/schemas/CachePolicyRequest"
+        delivery_rules:
+          $ref: "#/components/schemas/DeliveryRules"
+        waf_rules:
+          $ref: "#/components/schemas/WAFRules"
+        rate_limit_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RateLimitRule"
+    DeliveryRules:
+      type: object
+      description: Route-scoped edge delivery rules applied after global edge rules.
+      properties:
+        set_headers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryHeaderSetRule"
+        remove_headers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryHeaderRemoveRule"
+        redirects:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryRedirectRule"
+    DeliveryHeaderSetRule:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        path_prefix:
+          type: string
+          description: Request path prefix to match; use `*` or omit for all paths.
+          examples:
+            - /edge/assets/
+        name:
+          type: string
+          examples:
+            - X-AstraCDN-Control-Rule
+        value:
+          type: string
+          examples:
+            - "yes"
+    DeliveryHeaderRemoveRule:
+      type: object
+      required:
+        - name
+      properties:
+        path_prefix:
+          type: string
+          description: Request path prefix to match; use `*` or omit for all paths.
+          examples:
+            - /edge/assets/
+        name:
+          type: string
+          examples:
+            - Server
+    DeliveryRedirectRule:
+      type: object
+      required:
+        - target
+        - status
+      properties:
+        path_prefix:
+          type: string
+          description: Request path prefix to match; use `*` or omit for all paths.
+          examples:
+            - /edge/old/
+        target:
+          type: string
+          description: Redirect target. Supports `{path}` and `{query}` placeholders.
+          examples:
+            - https://cdn.example/new{path}
+        status:
+          type: integer
+          enum:
+            - 301
+            - 302
+            - 307
+            - 308
+    WAFRules:
+      type: object
+      description: Route-scoped request blocking rules.
+      properties:
+        enabled:
+          type: boolean
+          default: true
+        methods:
+          type: array
+          items:
+            type: string
+          examples:
+            - - POST
+              - PUT
+        path_prefixes:
+          type: array
+          items:
+            type: string
+          examples:
+            - - /edge/admin/
+        headers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WAFHeaderRule"
+        ips:
+          type: array
+          description: Exact IPs or CIDR ranges.
+          items:
+            type: string
+          examples:
+            - - 198.51.100.10
+              - 203.0.113.0/24
+    WAFHeaderRule:
+      type: object
+      required:
+        - name
+        - value_contains
+      properties:
+        name:
+          type: string
+          examples:
+            - User-Agent
+        value_contains:
+          type: string
+          examples:
+            - badbot
+    RateLimitRule:
+      type: object
+      required:
+        - rps
+        - burst
+      properties:
+        host:
+          type: string
+          description: CDN host to match; omit to use the route host.
+          examples:
+            - cdn.example
+        path_prefix:
+          type: string
+          description: Request path prefix to match; omit to use the route path prefix.
+          examples:
+            - /edge/assets/
+        rps:
+          type: number
+          minimum: 0
+          examples:
+            - 1
+        burst:
+          type: number
+          minimum: 0
+          examples:
+            - 5
+    BillingWebhookRequest:
+      type: object
+      required:
+        - event_id
+        - provider
+        - status
+      properties:
+        event_id:
+          type: string
+          examples:
+            - evt_123
+        provider:
+          type: string
+          examples:
+            - stripe
+        tenant_id:
+          type: integer
+          format: int64
+          description: Tenant billing account to update. Use this or provider_customer_id.
+        provider_customer_id:
+          type: string
+          description: Provider customer ID to match when tenant_id is omitted.
+          examples:
+            - cus_123
+        plan:
+          type: string
+          description: Optional new plan. Omitted or empty keeps the current plan.
+          examples:
+            - team
+        status:
+          type: string
+          enum:
+            - trialing
+            - active
+            - past_due
+            - canceled
+            - disabled
+    BillingWebhookResponse:
+      type: object
+      required:
+        - status
+        - billing_account
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+            - duplicate
+        billing_account:
+          $ref: "#/components/schemas/BillingAccount"
+    BillingWebhookEventListResponse:
+      type: object
+      required:
+        - billing_webhook_events
+      properties:
+        billing_webhook_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingWebhookEvent"
+    BillingWebhookEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        provider:
+          type: string
+        event_id:
+          type: string
+        billing_account_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+            - applied
+        payload:
+          type: object
+          additionalProperties: true
+        processed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    BillingAccount:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        provider:
+          type: string
+        provider_customer_id:
+          type: string
+        plan:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RouteRuleVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        route_id:
+          type: integer
+          format: int64
+        version:
+          type: integer
+        delivery_rules:
+          $ref: "#/components/schemas/DeliveryRules"
+        waf_rules:
+          $ref: "#/components/schemas/WAFRules"
+        rate_limit_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RateLimitRule"
+        changed_by:
+          type: string
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CachePolicyRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - origin
+            - override
+            - bypass
+          default: origin
+          description: "`origin` follows origin headers, `override` uses ttl_seconds, and `bypass` disables caching."
+        ttl_seconds:
+          type: integer
+          minimum: 0
+          examples:
+            - 300
+        stale_while_revalidate_seconds:
+          type: integer
+          minimum: 0
+          examples:
+            - 60
+    RouteResponse:
+      type: object
+      required:
+        - status
+        - route
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        route:
+          $ref: "#/components/schemas/Route"
+    Route:
+      type: object
+      required:
+        - id
+        - host
+        - path_prefix
+        - origin_id
+        - origin_name
+        - origin_base_url
+        - cache_policy
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        host:
+          type: string
+        path_prefix:
+          type: string
+        origin_id:
+          type: integer
+          format: int64
+        origin_name:
+          type: string
+        origin_base_url:
+          type: string
+          format: uri
+        cache_ttl_seconds:
+          description: Backward-compatible mirror of cache_policy.ttl_seconds.
+          type: integer
+          minimum: 0
+        cache_policy:
+          $ref: "#/components/schemas/CachePolicy"
+        delivery_rules:
+          $ref: "#/components/schemas/DeliveryRules"
+        waf_rules:
+          $ref: "#/components/schemas/WAFRules"
+        rate_limit_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RateLimitRule"
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DomainRequest:
+      type: object
+      required:
+        - host
+      properties:
+        host:
+          type: string
+          examples:
+            - cdn.example
+        route_id:
+          type: integer
+          format: int64
+          examples:
+            - 1
+        tls_mode:
+          type: string
+          enum:
+            - off
+            - manual
+            - managed
+          default: managed
+    DomainResponse:
+      type: object
+      required:
+        - status
+        - domain
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        domain:
+          $ref: "#/components/schemas/Domain"
+    DomainVerificationRequest:
+      type: object
+      required:
+        - host
+      properties:
+        host:
+          type: string
+          examples:
+            - cdn.example
+    DomainVerificationResponse:
+      type: object
+      required:
+        - status
+        - domain
+      properties:
+        status:
+          type: string
+          enum:
+            - verified
+        domain:
+          $ref: "#/components/schemas/Domain"
+    DomainVerificationPendingResponse:
+      type: object
+      required:
+        - status
+        - domain
+        - expected_record
+      properties:
+        status:
+          type: string
+          enum:
+            - pending_dns
+        domain:
+          $ref: "#/components/schemas/Domain"
+        expected_record:
+          type: object
+          required:
+            - type
+            - name
+            - value
+          properties:
+            type:
+              type: string
+              enum:
+                - TXT
+            name:
+              type: string
+            value:
+              type: string
+    Domain:
+      type: object
+      required:
+        - id
+        - host
+        - tls_mode
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        host:
+          type: string
+        route_id:
+          type: integer
+          format: int64
+        tls_mode:
+          type: string
+          enum:
+            - off
+            - manual
+            - managed
+        status:
+          type: string
+          enum:
+            - pending_dns
+            - active
+            - failed
+        dns_txt_name:
+          type: string
+        dns_txt_value:
+          type: string
+        verified_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CachePolicy:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          enum:
+            - origin
+            - override
+            - bypass
+        ttl_seconds:
+          type: integer
+          minimum: 0
+        stale_while_revalidate_seconds:
+          type: integer
+          minimum: 0
+    RegisterEdgeNodeResponse:
+      type: object
+      required:
+        - status
+        - node
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        node:
+          $ref: "#/components/schemas/EdgeNode"
+    EdgeNode:
+      type: object
+      required:
+        - node_id
+        - address
+        - capabilities
+        - status
+        - last_seen_at
+        - created_at
+        - updated_at
+      properties:
+        node_id:
+          type: string
+        address:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        last_seen_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    EdgeHealth:
+      type: object
+      required:
+        - node
+        - healthy
+        - seconds_since_last_seen
+        - cache_fill_latency
+      properties:
+        node:
+          $ref: "#/components/schemas/EdgeNode"
+        healthy:
+          type: boolean
+        seconds_since_last_seen:
+          type: integer
+          format: int64
+          minimum: 0
+        last_cache_observed_at:
+          type: string
+          format: date-time
+        cache_fill_latency:
+          $ref: "#/components/schemas/CacheFillLatency"
+    APIKeyCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          description: Control-plane scopes such as `control:read`, `control:write`, `control:admin`, `control:*`, or `*`.
+          items:
+            type: string
+    APIKeyRevokeRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int64
+    APIKeyCreateResponse:
+      type: object
+      required:
+        - status
+        - key
+        - api_key
+      properties:
+        status:
+          type: string
+          enum:
+            - created
+        key:
+          type: string
+          description: Secret API key value. Returned only at creation time.
+        api_key:
+          $ref: "#/components/schemas/APIKey"
+    APIKeyRevokeResponse:
+      type: object
+      required:
+        - status
+        - api_key
+      properties:
+        status:
+          type: string
+          enum:
+            - revoked
+        api_key:
+          $ref: "#/components/schemas/APIKey"
+    APIKey:
+      type: object
+      required:
+        - id
+        - name
+        - scopes
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        scopes:
+          type: array
+          description: Scopes enforced for persisted API keys. Empty means legacy full access.
+          items:
+            type: string
+        revoked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    AuditLogEntry:
+      type: object
+      required:
+        - id
+        - actor
+        - action
+        - resource_type
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        actor:
+          type: string
+          description: Redacted actor identifier, usually an API key hash prefix.
+        action:
+          type: string
+          examples:
+            - upsert
+            - create
+            - revoke
+        resource_type:
+          type: string
+          examples:
+            - origin
+            - route
+            - domain
+            - cache_invalidation
+        resource_id:
+          type: string
+        request_id:
+          type: string
+        remote_addr:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    CacheAnalyticsSnapshotRequest:
+      type: object
+      required:
+        - cache
+      properties:
+        edge_node_id:
+          type: string
+        host:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        cache:
+          $ref: "#/components/schemas/CacheAnalyticsMetric"
+    CacheAnalyticsSnapshotResponse:
+      type: object
+      required:
+        - status
+        - snapshot
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        snapshot:
+          $ref: "#/components/schemas/CacheAnalyticsSnapshot"
+    CacheAnalyticsSnapshot:
+      type: object
+      required:
+        - id
+        - cache
+        - observed_at
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        edge_node_id:
+          type: string
+        host:
+          type: string
+        cache:
+          $ref: "#/components/schemas/CacheAnalyticsMetric"
+        observed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    CacheAnalyticsMetric:
+      type: object
+      required:
+        - requests
+        - hits
+        - misses
+        - hit_ratio
+        - by_layer
+      properties:
+        requests:
+          type: integer
+          format: int64
+          minimum: 0
+        hits:
+          type: integer
+          format: int64
+          minimum: 0
+        misses:
+          type: integer
+          format: int64
+          minimum: 0
+        hit_ratio:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        by_layer:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CacheAnalyticsLayerCounter"
+        by_host:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CacheAnalyticsBreakout"
+        by_route:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CacheAnalyticsBreakout"
+        cache_fill_latency:
+          $ref: "#/components/schemas/CacheFillLatency"
+    CacheInvalidationRequest:
+      type: object
+      properties:
+        host:
+          type: string
+          description: Optional CDN hostname to scope the purge. Omit to purge matching keys, prefixes, or tags across all hosts.
+          examples:
+            - cdn-a.example
+        keys:
+          type: array
+          items:
+            type: string
+          examples:
+            - - /edge/assets/app.js
+        prefixes:
+          type: array
+          items:
+            type: string
+          examples:
+            - - /edge/assets/
+        tags:
+          type: array
+          description: Surrogate-Key tags captured from cached origin responses.
+          items:
+            type: string
+            maxLength: 128
+            pattern: '^[A-Za-z0-9._:-]+$'
+          examples:
+            - - release-2026
+              - product:hero
+        requested_by:
+          type: string
+          examples:
+            - local-dev
+    CacheInvalidationResponse:
+      type: object
+      required:
+        - status
+        - invalidation
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        invalidation:
+          $ref: "#/components/schemas/CacheInvalidation"
+    CachePrewarmRequest:
+      type: object
+      required:
+        - paths
+      properties:
+        host:
+          type: string
+          description: Optional CDN hostname to use for host-specific route and cache-key selection.
+          examples:
+            - cdn.example
+        paths:
+          type: array
+          items:
+            type: string
+          examples:
+            - - /edge/assets/app.js
+              - /edge/assets/app.css
+        requested_by:
+          type: string
+          examples:
+            - deploy
+    CachePrewarmResponse:
+      type: object
+      required:
+        - status
+        - prewarm
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        prewarm:
+          $ref: "#/components/schemas/CachePrewarm"
+    CachePrewarm:
+      type: object
+      required:
+        - id
+        - paths
+        - status
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        host:
+          type: string
+        paths:
+          type: array
+          items:
+            type: string
+        requested_by:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CacheInvalidationDeliveryRequest:
+      type: object
+      required:
+        - invalidation_id
+        - node_id
+        - status
+      properties:
+        invalidation_id:
+          type: integer
+          format: int64
+        node_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - applied
+            - failed
+        error:
+          type: string
+    CacheInvalidationDeliveryResponse:
+      type: object
+      required:
+        - status
+        - delivery
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+        delivery:
+          $ref: "#/components/schemas/CacheInvalidationDelivery"
+    CacheInvalidationDeliveriesResponse:
+      type: object
+      required:
+        - deliveries
+      properties:
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CacheInvalidationDelivery"
+    CacheInvalidationDelivery:
+      type: object
+      required:
+        - invalidation_id
+        - node_id
+        - status
+        - delivered_at
+      properties:
+        invalidation_id:
+          type: integer
+          format: int64
+        node_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - applied
+            - failed
+        error:
+          type: string
+        delivered_at:
+          type: string
+          format: date-time
+    CacheInvalidation:
+      type: object
+      required:
+        - id
+        - mode
+        - values
+        - status
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        host:
+          type: string
+          description: CDN hostname scoped by this invalidation, if any.
+        mode:
+          type: string
+          enum:
+            - keys
+            - prefixes
+            - tags
+        values:
+          type: array
+          items:
+            type: string
+        requested_by:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    InferRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        model:
+          type: string
+          examples:
+            - gpt-4o-mini
+        prompt:
+          type: string
+          examples:
+            - Explain edge caching in one sentence.
+        params:
+          type: object
+          additionalProperties: true
+          examples:
+            - temperature: 0.2
+              max_tokens: 64
+        stream:
+          type: boolean
+          default: false
+    InferResponse:
+      type: object
+      required:
+        - provider
+        - model
+        - cached
+        - response
+        - prompt
+        - cache_key
+        - cache_hit
+      properties:
+        provider:
+          type: string
+          examples:
+            - mock
+            - openai
+        model:
+          type: string
+        cached:
+          type: boolean
+        response:
+          type: string
+        prompt:
+          type: string
+        cache_key:
+          type: string
+        cache_hit:
+          type: string
+          enum:
+            - miss
+            - exact
+            - semantic

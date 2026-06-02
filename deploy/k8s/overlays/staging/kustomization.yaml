@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/your-org/astra-cdn-edge
+    newTag: staging-placeholder
+  - name: ghcr.io/your-org/astra-cdn-control
+    newTag: staging-placeholder
+  - name: ghcr.io/your-org/astra-cdn-inference
+    newTag: staging-placeholder
+  - name: ghcr.io/your-org/astra-cdn-origin
+    newTag: staging-placeholder
+  - name: ghcr.io/your-org/astra-cdn-dashboard
+    newTag: staging-placeholder
+
+replicas:
+  - name: edge
+    count: 2
+  - name: control
+    count: 1
+  - name: inference
+    count: 1
+  - name: example-origin
+    count: 1
+  - name: dashboard
+    count: 1
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: astra-cdn-config
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: astra-cdn-config
+      data:
+        ASTRACDN_ENV: staging
+        EDGE_DOMAIN_VALIDATION_ENABLED: "true"
+        CONTROL_DOMAIN_VERIFICATION_BYPASS: "true"

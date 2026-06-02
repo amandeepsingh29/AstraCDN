@@ -1,0 +1,13 @@
+FROM docker.io/library/golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY go.sum ./
+COPY services/edge ./services/edge
+RUN go build -o /out/edge ./services/edge/cmd/edge
+
+FROM docker.io/library/alpine:3.20
+RUN adduser -D -H astracdn
+USER astracdn
+COPY --from=build /out/edge /usr/local/bin/edge
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/edge"]

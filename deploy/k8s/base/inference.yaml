@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+spec:
+  selector:
+    app.kubernetes.io/name: inference
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inference
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inference
+    spec:
+      containers:
+        - name: inference
+          image: ghcr.io/your-org/astra-cdn-inference:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: astra-cdn-config
+            - secretRef:
+                name: astra-cdn-secrets
+          env:
+            - name: HTTP_WRITE_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: astra-cdn-config
+                  key: INFERENCE_HTTP_WRITE_TIMEOUT
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

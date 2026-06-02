@@ -1,0 +1,202 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+data:
+  001-schema.sql: |
+    CREATE TABLE IF NOT EXISTS edge_nodes (
+        node_id TEXT PRIMARY KEY,
+        address TEXT NOT NULL,
+        capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status TEXT NOT NULL DEFAULT 'active',
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS edge_nodes_status_idx ON edge_nodes (status);
+    CREATE TABLE IF NOT EXISTS cdn_origins (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        base_url TEXT NOT NULL,
+        headers JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS cdn_origins_status_idx ON cdn_origins (status);
+    CREATE TABLE IF NOT EXISTS cdn_routes (
+        id BIGSERIAL PRIMARY KEY,
+        host TEXT NOT NULL,
+        path_prefix TEXT NOT NULL DEFAULT '/',
+        origin_id BIGINT NOT NULL REFERENCES cdn_origins(id),
+        cache_mode TEXT NOT NULL DEFAULT 'origin' CHECK (cache_mode IN ('origin', 'override', 'bypass')),
+        cache_ttl_seconds INTEGER CHECK (cache_ttl_seconds IS NULL OR cache_ttl_seconds >= 0),
+        stale_while_revalidate_seconds INTEGER CHECK (stale_while_revalidate_seconds IS NULL OR stale_while_revalidate_seconds >= 0),
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (host, path_prefix)
+    );
+    CREATE INDEX IF NOT EXISTS cdn_routes_status_idx ON cdn_routes (status);
+    CREATE INDEX IF NOT EXISTS cdn_routes_host_prefix_idx ON cdn_routes (host, path_prefix);
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id BIGSERIAL PRIMARY KEY,
+        key_hash TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        scopes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS tenants (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'disabled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS tenants_status_idx ON tenants (status);
+    CREATE TABLE IF NOT EXISTS tenant_users (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'operator', 'viewer', 'billing')),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'disabled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (tenant_id, email)
+    );
+    CREATE INDEX IF NOT EXISTS tenant_users_tenant_idx ON tenant_users (tenant_id);
+    CREATE INDEX IF NOT EXISTS tenant_users_email_idx ON tenant_users (email);
+    CREATE TABLE IF NOT EXISTS billing_accounts (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id BIGINT NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        provider_customer_id TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'trialing' CHECK (status IN ('trialing', 'active', 'past_due', 'canceled', 'disabled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS billing_accounts_status_idx ON billing_accounts (status);
+    CREATE TABLE IF NOT EXISTS billing_webhook_events (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        billing_account_id BIGINT REFERENCES billing_accounts(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'applied' CHECK (status IN ('applied')),
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (provider, event_id)
+    );
+    CREATE INDEX IF NOT EXISTS billing_webhook_events_account_idx
+        ON billing_webhook_events (billing_account_id, processed_at DESC);
+    CREATE TABLE IF NOT EXISTS cache_invalidations (
+        id BIGSERIAL PRIMARY KEY,
+        host TEXT,
+        mode TEXT NOT NULL CHECK (mode IN ('keys', 'prefixes')),
+        values JSONB NOT NULL,
+        requested_by TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS cache_invalidations_status_idx ON cache_invalidations (status);
+    CREATE INDEX IF NOT EXISTS cache_invalidations_host_created_idx ON cache_invalidations (host, created_at DESC);
+    CREATE TABLE IF NOT EXISTS cache_invalidation_deliveries (
+        invalidation_id BIGINT NOT NULL REFERENCES cache_invalidations(id) ON DELETE CASCADE,
+        node_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('applied', 'failed')),
+        error_message TEXT,
+        delivered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (invalidation_id, node_id)
+    );
+    CREATE INDEX IF NOT EXISTS cache_invalidation_deliveries_status_idx ON cache_invalidation_deliveries (status);
+    CREATE INDEX IF NOT EXISTS cache_invalidation_deliveries_node_idx ON cache_invalidation_deliveries (node_id, delivered_at DESC);
+    CREATE TABLE IF NOT EXISTS service_events (
+        id BIGSERIAL PRIMARY KEY,
+        service TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS service_events_service_created_idx ON service_events (service, created_at DESC);
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: astra-cdn-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: astra-cdn-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: astra-cdn-secrets
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "astracdn", "-d", "astracdn"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: postgres-initdb
+          configMap:
+            name: postgres-initdb
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

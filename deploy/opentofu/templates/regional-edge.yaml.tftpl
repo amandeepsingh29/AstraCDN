@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: astra-cdn
+    astra-cdn.io/environment: ${environment}
+    astra-cdn.io/region: ${region}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${deployment_name}-config
+  namespace: ${namespace}
+data:
+  ASTRACDN_ENV: ${environment}
+  CONTROL_BASE_URL: ${control_base_url}
+  REDIS_ADDR: ${redis_addr}
+  NATS_URL: ${nats_url}
+  EDGE_CONFIG_REFRESH_INTERVAL: ${edge_config_refresh_interval}
+  EDGE_DOMAIN_VALIDATION_ENABLED: "true"
+  EDGE_ANALYTICS_PUSH_INTERVAL: "30s"
+  EDGE_HEALTH_PUSH_INTERVAL: ${edge_health_push_interval}
+  EDGE_PUBLIC_URL: https://${regional_hostname}
+  EDGE_REQUEST_COALESCING_ENABLED: "true"
+  EDGE_COMPRESSION_ENABLED: "true"
+  EDGE_BROTLI_ENABLED: "true"
+  EDGE_LARGE_OBJECT_STREAMING_ENABLED: "true"
+  EDGE_SEGMENTED_CACHE_ENABLED: "true"
+  EDGE_IMAGE_TRANSFORM_ENABLED: "true"
+  EDGE_PORT: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${service_name}
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/name: edge
+    astra-cdn.io/region: ${region}
+  annotations:
+    astra-cdn.io/cdn-domain: ${cdn_domain}
+    astra-cdn.io/regional-hostname: ${regional_hostname}
+spec:
+  type: ${edge_service_type}
+  selector:
+    app.kubernetes.io/name: edge
+    astra-cdn.io/region: ${region}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${deployment_name}
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/name: edge
+    astra-cdn.io/region: ${region}
+spec:
+  replicas: ${replicas}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge
+      astra-cdn.io/region: ${region}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edge
+        astra-cdn.io/region: ${region}
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge
+              astra-cdn.io/region: ${region}
+      containers:
+        - name: edge
+          image: ${edge_image}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ${deployment_name}-config
+            - secretRef:
+                name: astra-cdn-edge-secrets
+          env:
+            - name: EDGE_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: EDGE_REGION
+              value: ${region}
+            - name: EDGE_NODE_ID_PREFIX
+              value: ${edge_node_id_prefix}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ${deployment_name}
+  namespace: ${namespace}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ${deployment_name}
+  minReplicas: ${replicas}
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65

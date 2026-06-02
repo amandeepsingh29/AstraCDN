@@ -1,0 +1,104 @@
+# AstraCDN Git ignore policy:
+# Track source code, infra templates, docs, examples, migrations, and scripts.
+# Ignore local secrets, runtime data, generated artifacts, tool caches, and state.
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+*.secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+auth.json
+credentials.json
+
+# Logs and temp files
+*.log
+logs/
+tmp/
+temp/
+.tmp/
+*.pid
+CHANGELOG.md
+TODO.md
+docs/
+
+# Go build and test artifacts
+bin/
+dist/
+build/
+coverage/
+coverage.out
+*.cover
+*.test
+*.prof
+
+# Node / frontend artifacts
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Podman / container local artifacts
+podman-compose.override.yml
+compose.override.yml
+*.tar
+*.oci
+
+# Local runtime data and uploaded assets
+data/*
+!data/.gitkeep
+!data/origin/
+data/origin/*
+!data/origin/.gitkeep
+
+# Database and service runtime files
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+redis-data/
+nats-data/
+minio-data/
+
+# Terraform / OpenTofu local state
+.terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Generated deployment output
+deploy/opentofu/generated/*
+!deploy/opentofu/generated/.gitignore
+
+# Generated media exports not meant for source control
+*.mp4
+*.mov
+*.avi
+*.webm
