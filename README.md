@@ -25,8 +25,6 @@ AstraCDN is a modern, Go-based Content Delivery Network designed to be hosted on
 
 ## ✨ Core Features
 
-AstraCDN isn't just a basic proxy. It's built with advanced edge delivery capabilities out of the box:
-
 ### ⚡ Edge Caching & Delivery
 - **Intelligent Caching**: Request coalescing (collapsing concurrent requests), segmented caching for streaming large objects (videos/binaries), and stale-while-revalidate support.
 - **Media Optimization**: On-the-fly image transformations (resizing, format conversion, JPEG quality adjustment).
